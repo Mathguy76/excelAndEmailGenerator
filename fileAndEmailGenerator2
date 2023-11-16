@@ -115,11 +115,18 @@ df = df.merge(changes, on = 'object_id', how = 'inner').merge(actor_list, on = '
 df.rename(columns = {'decision_new' : 'decision_audit','harm_new' : 'harm_audit','decision_string' : 'decision_rater','harm' : 'harm_rater'},inplace = True)
 df['rater_type'] = np.where(df['queue'].str.contains('Quality'),'Quality','Prod')
 
+#df['error_type'] = np.where(
+#    (df['decision_rater'] == 'not_recommendable') & (df['decision_audit'] == 'not_recommendable'),
+#    'TP', np.where((df['decision_rater'] == 'not_recommendable') & (df['decision_audit'] == 'recommendable'),
+#    'FP',np.where((df['decision_rater'] == 'recommendable') & (df['decision_audit'] == 'not_recommendable'),
+#    'FN',np.where((df['decision_rater'] == 'recommendable') & (df['decision_audit'] == 'recommendable'),'TN','N/A')))
+#)
+
 df['error_type'] = np.where(
-    (df['decision_rater'] == 'not_recommendable') & (df['decision_audit'] == 'not_recommendable'),
-    'TP', np.where((df['decision_rater'] == 'not_recommendable') & (df['decision_audit'] == 'recommendable'),
-    'FP',np.where((df['decision_rater'] == 'recommendable') & (df['decision_audit'] == 'not_recommendable'),
-    'FN',np.where((df['decision_rater'] == 'recommendable') & (df['decision_audit'] == 'recommendable'),'TN','N/A')))
+    (df['decision_rater'] == 'no') & (df['decision_audit'] == 'not_recommendable'),
+    'TP', np.where((df['decision_rater'] == 'no') & (df['decision_audit'] == 'recommendable'),
+    'FP',np.where((df['decision_rater'] == 'yes') & (df['decision_audit'] == 'not_recommendable'),
+    'FN',np.where((df['decision_rater'] == 'yes') & (df['decision_audit'] == 'recommendable'),'TN','N/A')))
 )
 
 df = df[df['harm_focused'] == harmy]
