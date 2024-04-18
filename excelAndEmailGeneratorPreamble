@@ -1,0 +1,105 @@
+import pandas as pd
+import numpy as np
+from pandas.io.formats import excel
+import os
+
+# Place all raw data files in a goldensetRawData folder, named in the following manner "goldenset%m-%d".
+# Be sure to use a dash rather than a / since the latter is not an acceptable file name.
+
+user = 'jameslavinge'
+
+files = os.listdir('/Users/' + user + '/documents/goldensetRawData/')
+files = [k for k in files if '.csv' in k]
+
+dfarray = [pd.read_csv('/Users/' + user + '/documents/goldensetRawData/' + k, encoding = 'utf-8') for k in files]
+for k in dfarray:
+    if 'rating_date' not in k.columns:
+        k.insert(0,'rating_date',k['audit_date'])
+    else:
+        pass
+df = pd.concat(dfarray).fillna('').astype({'actor_id' : 'int64', 'object_id' : 'int64'})
+df['audit_date'] = pd.to_datetime(df['audit_date'],dayfirst = False,format = '%m/%d/%y')
+#df['audit_date'] = df['audit_date'].dt.strftime('%m/%d/%y')
+df['object_id'] = df['hash_object_id'].str.replace('#','').astype('int64')
+
+date = str(df.sort_values('audit_date', ascending = False)['audit_date'].dt.strftime('%m-%d').iloc[0])
+
+#df['audit_date'] = df['audit_date'].astype('datetime64[ns]').dt.strftime('%m-%d-%Y')
+
+common_harm = pd.DataFrame([
+        ['promoting_adult_products','Promo Adult','Promoting adult products'],
+        ['clickbait','Clickbait', 'Clickbait'],
+        ['promoting_tobacco_or_drugs','Promo tobacco / drugs','Promoting tobacco or drugs'],
+        ['engagement_bait','EB', 'Engagement bait'],
+        ['payday_loans_get_rich_quick','Payday loans', 'Payday loans'],
+        ['borderline_nudity','BL ANSA', 'Borderline nudity'],
+        ['promoting_weapons','Promo Weapons','Promoting weapons'],
+        ['borderline_violence_graphic','BL GV', 'Borderline graphic violence'],
+        ['low_quality_health','LQH', 'Low quality health'],
+        ['fraud_deception','Fraud', 'fraud and deception'],
+        ['adult_nudity_sex_activity','ANSA', 'Adult nudity and sex activity'],
+        ['adult_sex_solicitation_explicit_language','Adult Solicitation', 'Adult sexual solicitation'],
+        ['regulated_goods','Regulated goods','Restricted goods'],
+        ['coordinating_harm_crime','Coordinating harm','Coordinating harm / crime'],
+        ['violence_incitement','Violence & incitement', 'Violence and incitement'],
+        ['sex_exploit_adult','Adult exploitation', 'Adult sexual exploitation'],
+        ['violent_graphic','VG','Graphic violence'],
+        ['suicide_self_injury','SSI', 'Suicide and self injury'],
+        ['privacy_violations','Privacy', 'Privacy violations'],
+        ['bullying_harassment','Bullying', 'Bullying and harassment'],
+        ['dangerous_ind_org','Dangerous Orgs','Dangerous orgs'],
+        ['child_abuse_exploit','CEI', 'Child sexual exploitation'],
+        ['Spam','Spam','Spam'],
+        ['human_exploit','Human exploitation','Human exploitation'],
+        ['hate_speech','HS','Hate speech'],
+        ['warning_screen','WS','Warning screen'],
+        ['Borderline_Sexual_Solicitation_Prostitution','BL SSPx', 'Borderline Sexual Solicitation']
+    ])
+common_harm.columns = ['harm_focused','harm_short','harm_long']
+
+# Place answers (to new and old jobs) into a folder called "info" and a .csv file called answer_sheet, with columns
+# "job_id", "object_id", "decision", "harm", and "notes"
+changes = pd.read_csv('/Users/' + user + '/documents/goldensetRawData/info/answer_sheet.csv', encoding = 'utf-8')
+changes.columns = ['injection_date','original_job_id','object_id','source_queue','decision_new','harm_new','notes']
+changes['object_id'] = changes['object_id'].str.replace('#','').fillna(0).astype('int64')
+
+# This requires a .csv file named "actors" in the same folder as the "answer_sheet",
+# which will be updated with the most recent data
+actor_list = pd.read_csv('/Users/' + user + '/documents/goldensetRawData/info/actors.csv', encoding = 'utf-8')
+df = df.merge(changes, on = 'object_id', how = 'left').merge(actor_list, on = 'actor_id', how = 'left')
+
+df['injection_date'] = df['injection_date'].astype('datetime64[ns]')
+dg1 = df[(~df['harm'].str.contains(',')) & (df['harm'] != '')].groupby(['injection_date','harm']).agg({'job_id' : 'count'}).rename(columns = {'job_id' : 'count'}).reset_index()
+dg1['max_count'] = dg1.groupby('injection_date')['count'].transform('max')
+date_harm_map = dg1[dg1['max_count'] == dg1['count']]
+date_harm_map = date_harm_map.rename(columns = {'harm' : 'harm_focused'})
+
+date_harm_map = date_harm_map.merge(common_harm, on = 'harm_focused', how = 'inner')
+
+df.rename(columns = {'decision_new' : 'decision_audit','harm_new' : 'harm_audit','decision_string' : 'decision_rater','harm' : 'harm_rater'},inplace = True)
+
+df = df.merge(date_harm_map, on = 'injection_date', how = 'inner')
+
+df['decision_rater'] = np.where(
+    df['decision_rater'] == 'no','not_recommendable', np.where(df['decision_rater'] == 'yes','recommendable',
+        df['decision_rater']
+    )
+)
+df['decision_rater'] = np.where(df['harm_rater'] != '', 'not_recommendable', df['decision_rater'])
+
+df['audit_date_format'] = df['injection_date'].dt.strftime('%y/%m/%d')
+df['rater_type'] = np.where(df['queue'].str.contains('Quality'),'Quality','Prod')
+
+df['error_type'] = np.where(
+    (df['decision_rater'] == 'not_recommendable') & (df['decision_audit'] == 'not_recommendable'),
+    'TP', np.where((df['decision_rater'] == 'not_recommendable') & (df['decision_audit'] == 'recommendable'),
+    'FP',np.where((df['decision_rater'] == 'recommendable') & (df['decision_audit'] == 'not_recommendable'),
+    'FN',np.where((df['decision_rater'] == 'recommendable') & (df['decision_audit'] == 'recommendable'),'TN','N/A')))
+)
+
+harm = date_harm_map[date_harm_map['injection_date'] == date_harm_map['injection_date'].max()]['harm_short'].iloc[0]
+harmy = date_harm_map[date_harm_map['injection_date'] == date_harm_map['injection_date'].max()]['harm_focused'].iloc[0]
+harm_long = date_harm_map[date_harm_map['injection_date'] == date_harm_map['injection_date'].max()]['harm_long'].iloc[0]
+
+df1 = df[df['harm_focused'] == harmy]
+harm
