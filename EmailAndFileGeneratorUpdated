@@ -1,0 +1,459 @@
+import pandas as pd
+import numpy as np
+from pandas.io.formats import excel
+import os
+
+# Place all raw data files in a goldensetRawData folder, named in the following manner "goldenset%m-%d".
+# Be sure to use a dash rather than a / since the latter is not an acceptable file name.
+# Must create files
+
+# ^^^ Edit this string with your username! ^^^
+user = 'jameslavinge'
+
+# Enter a date in yyyy-mm-dd format (placed within quotes), if interested in historical golden set data, otherwise
+# leave blank if interested in most recent data. If a date is included
+
+end_date = ''
+
+# Select 'Yes' if you compare by harm type, or 'No' if comparing all golden sets
+harm_mode_on = 'Yes'
+
+# Specify harm type string (in DB form, e.g. 'borderline_nudity'). Leave blank for auto-select
+selected_harm = ''
+
+# Enter email distribution in the format name@email.com; name2@email.com; 
+email_acn_reels = 'wagentrecglobal@accenture.com; jitesh.karkera@accenture.com; ananta.v.kshirsagar@accenture.com; silva@accenture.com; sergio.a.silva@accenture.com; edwin.christie@fb.accenture.com'
+email_taskus = 'ravi.bhardwaj@taskus.com; biswajit.barik@taskus.com; abdurahman.vr@taskus.com; joy.shiffin@taskus.com; neha.bhargav@taskus.com; nidhi.pareek@taskus.com>; ahmad.kamal@taskus.com; raj.jaiswal@taskus.com; mohit.taneja@taskus.com; ramji.ramadurai@taskus.com; rohit.rawat@taskus.com; eric.nimbunchat@taskus.com; shivam.tiwari02@taskus.com; devashish.rawal@taskus.com; jaya.vishwakarma@taskus.com; rishabh.mishra02@taskus.com; kiran.agrawal@taskus.com; clive.joseph@taskus.com; gino.tizon@taskus.com; sagar.tu@taskus.com'
+email_search = '"Ed Baez" <edbaez@meta.com>; kuldipp@meta.com <kuldipp@meta.com>; "Atiqur Rahman" <mdatiq@meta.com>; "Candice Han" <candicehan@meta.com>; "Pint Panichkul" <pintpilantha@meta.com>; "Jacqueline Liu" <jacliu@meta.com>; zmarai@fb.com <zmarai@fb.com>; "Ana Maria Cardoso" <acardoso@meta.com>; "josie.joy.h.barlosoATaccenture.com" <josie.joy.h.barloso@accenture.com>; jirah.nielle.p.ongco@accenture.com <jirah.nielle.p.ongco@accenture.com>; k.sequeira.alvarez@accenture.com <k.sequeira.alvarez@accenture.com>; andre.benavides@accenture.com <andre.benavides@accenture.com>; marc.l.m.marasigan@accenture.com <marc.l.m.marasigan@accenture.com>; johnsen.t.mendez@accenture.com <johnsen.t.mendez@accenture.com>; "vincent.john.e.agbayATaccenture.com" <vincent.john.e.agbay@accenture.com>; twilliams22@meta.com <twilliams22@meta.com>; "Falis Yusuf" <falisyusuf@meta.com>; "James Lavigne" <jameslavinge@meta.com>; "Ed Baez" <edbaez@meta.com>; kuldipp@meta.com <kuldipp@meta.com>; "Atiqur Rahman" <mdatiq@meta.com>; "Candice Han" <candicehan@meta.com>; "Pint Panichkul" <pintpilantha@meta.com>; "Jacqueline Liu" <jacliu@meta.com>; zmarai@fb.com <zmarai@fb.com>; "Ana Maria Cardoso" <acardoso@meta.com>; "josie.joy.h.barlosoATaccenture.com" <josie.joy.h.barloso@accenture.com>; jirah.nielle.p.ongco@accenture.com <jirah.nielle.p.ongco@accenture.com>; k.sequeira.alvarez@accenture.com <k.sequeira.alvarez@accenture.com>; andre.benavides@accenture.com <andre.benavides@accenture.com>; marc.l.m.marasigan@accenture.com <marc.l.m.marasigan@accenture.com>; johnsen.t.mendez@accenture.com <johnsen.t.mendez@accenture.com>; "vincent.john.e.agbayATaccenture.com" <vincent.john.e.agbay@accenture.com>'
+
+# List of recipients of product report
+distribution_list = 'cc: pintpilantha@meta.com enochc@fb.com huwy@meta.com hjs@meta.com sau@meta.com deeptish@meta.com mengwu@meta.com mdatiq@meta.com rakeshyarragudi@meta.com'
+
+# This cell extracts and combines data
+
+# This requires the golden set .csvs are saved into the goldensetRawData folder
+files = os.listdir('/Users/' + user + '/documents/goldensetRawData/')
+files = [k for k in files if '.csv' in k]
+
+# Place answers (to new and old jobs) into a folder called "info" and a .csv file called answer_sheet, with columns
+# "job_id", "object_id", "decision", "harm", and "notes"
+actor_list = pd.read_csv('/Users/' + user + '/documents/goldensetRawData/info/actors.csv', encoding = 'utf-8')
+
+# This requires a .csv file named "actors" in the same folder as the "answer_sheet",
+# which will be updated with the most recent data
+changes = pd.read_csv('/Users/' + user + '/documents/goldensetRawData/info/answer_sheet.csv', encoding = 'utf-8')
+changes.columns = ['injection_date','original_job_id','object_id','source_queue','decision_new','harm_new','notes']
+changes['object_id'] = changes['object_id'].str.replace('#','').fillna(0).astype('int64')
+changes['injection_date'] = pd.to_datetime(changes['injection_date'], dayfirst = False)
+
+changes['decision_new'] = changes['decision_new'].fillna('')
+changes['harm_new'] = changes['harm_new'].fillna('')
+
+# Trim answer sheet output only historical data
+changes = (changes[changes['injection_date'] <= pd.to_datetime(end_date, dayfirst = False)] if end_date != '' else changes)
+
+# This code updates duplicate (or invalid answers, when another is available with the same object_id)
+
+changes1 = changes[changes['decision_new'].str.contains('recommendable')].groupby('object_id').agg({'decision_new' : 'first', 'harm_new' : 'first','notes' : 'first'}).fillna('').reset_index()
+changes2 = changes[['injection_date','original_job_id','object_id','source_queue']].merge(changes1, on = 'object_id', how = 'left')
+changes = changes2
+
+# Split harm into columns
+changes['harm_split'] = changes['harm_new'].str.split(',')
+
+# Display how many jobs have duplicate decisions for the same job on the same date (there shouldn't be any)
+changes3 = changes2.groupby(['injection_date','original_job_id']).agg({'object_id' : 'count'})
+
+# Check any object_ids with multiple answers in the answer sheet for a given date
+changes3[changes3['object_id'] > 1].shape
+
+
+# This cell infers the harm type focus of each injection date
+
+common_harm = pd.DataFrame([
+        ['promoting_adult_products','Promo Adult','Promoting adult products'],
+        ['clickbait','Clickbait', 'Clickbait'],
+        ['promoting_tobacco_or_drugs','Promo tobacco / drugs','Promoting tobacco or drugs'],
+        ['engagement_bait','EB', 'Engagement bait'],
+        ['payday_loans_get_rich_quick','Payday loans', 'Payday loans'],
+        ['borderline_nudity','BL ANSA', 'Borderline nudity'],
+        ['promoting_weapons','Promo Weapons','Promoting weapons'],
+        ['borderline_violence_graphic','BL GV', 'Borderline graphic violence'],
+        ['low_quality_health','LQH', 'Low quality health'],
+        ['fraud_deception','Fraud', 'fraud and deception'],
+        ['adult_nudity_sex_activity','ANSA', 'Adult nudity and sex activity'],
+        ['adult_sex_solicitation_explicit_language','SSPx', 'Adult sexual solicitation'],
+        ['regulated_goods','Regulated goods','Restricted goods'],
+        ['coordinating_harm_crime','Coordinating harm','Coordinating harm / crime'],
+        ['violence_incitement','Violence & incitement', 'Violence and incitement'],
+        ['sex_exploit_adult','Adult exploitation', 'Adult sexual exploitation'],
+        ['violent_graphic','VG','Graphic violence'],
+        ['suicide_self_injury','SSI', 'Suicide and self injury'],
+        ['privacy_violations','Privacy', 'Privacy violations'],
+        ['bullying_harassment','Bullying', 'Bullying and harassment'],
+        ['dangerous_ind_org','Dangerous Orgs','Dangerous orgs'],
+        ['child_abuse_exploit','CEI', 'Child sexual exploitation'],
+        ['Spam','Spam','Spam'],
+        ['human_exploit','Human exploitation','Human exploitation'],
+        ['hate_speech','HS','Hate speech'],
+        ['warning_screen','WS','Warning screen'],
+        ['Borderline_Sexual_Solicitation_Prostitution','BL SSPx', 'Borderline Sexual Solicitation']
+    ])
+common_harm.columns = ['harm_focused','harm_short','harm_long']
+
+# Determine dominant harm types
+
+changes_ex = changes[changes['harm_new'] != ''].explode('harm_split')
+dg1 = changes_ex.groupby(['injection_date','harm_split']).agg({'original_job_id' : 'count'}).rename(columns = {'original_job_id' : 'count'}).reset_index()
+dg1['max_count'] = dg1.groupby('injection_date')['count'].transform('max')
+
+date_harm_map = dg1[dg1['max_count'] == dg1['count']]
+date_harm_map = date_harm_map.rename(columns = {'harm_split' : 'harm_focused'})
+date_harm_map = date_harm_map.merge(common_harm, on = 'harm_focused', how = 'inner')
+
+# Print recent harm type breakdown
+dg1[dg1['injection_date'] == dg1['injection_date'].max()].head()
+
+
+# This cell builds the data frame of all relevant golden set responses based on the specifications
+# in the first cell
+
+dfarray_start = [pd.read_csv('/Users/' + user + '/documents/goldensetRawData/' + k, encoding = 'utf-8') for k in files]
+for k in dfarray_start:
+    if 'rating_date' not in k.columns:
+        k.insert(0,'rating_date',k['audit_date'])
+    else:
+        pass
+dfarray = [k[['rating_date','audit_date','queue_id','queue_name','actor_id','hash_object_id','object_id','job_id','handle_time','decision_string','harm']] for k in dfarray_start]
+df = pd.concat(dfarray).fillna('').astype({'actor_id' : 'int64', 'object_id' : 'int64'})
+df['rating_date'] = pd.to_datetime(df['audit_date'],dayfirst = False,format = '%m/%d/%y')
+df['audit_date'] = pd.to_datetime(df['audit_date'],dayfirst = False,format = '%m/%d/%y')
+df['object_id'] = df['hash_object_id'].str.replace('#','').astype('int64')
+df.drop_duplicates(inplace = True)
+
+
+# Create df2, which infers the injection date from the audit date and object_id
+# in the answer sheet (
+
+df2 = df[['audit_date','object_id']].merge(changes, on = 'object_id', how = 'inner')
+df2 = df2[df2['audit_date'] >= df2['injection_date']]
+df2 = df2.groupby(['audit_date','object_id']).agg({'injection_date' : 'max','original_job_id' : 'first','source_queue' : 'first', 'decision_new' : 'first', 'harm_new' : 'first', 'notes' : 'first'}).reset_index()
+
+# Print df2
+df2.head()
+
+# Finish building the data frame
+df = df.merge(df2, on = ['audit_date', 'object_id'], how = 'left').merge(actor_list, on = 'actor_id', how = 'left')
+
+df['injection_date'] = df['injection_date'].astype('datetime64[ns]')
+df['audit_date_format'] = df['injection_date'].dt.strftime('%y/%m/%d')
+df = df.merge(date_harm_map, on = 'injection_date', how = 'inner')
+df['rater_type'] = np.where(df['queue'].str.contains('Quality'),'Quality','Prod')
+
+# Rename columns
+df.rename(columns = {'decision_new' : 'decision_audit','harm_new' : 'harm_audit','decision_string' : 'decision_rater','harm' : 'harm_rater'},inplace = True)
+
+#Update old Search decisions to the current decision tree format
+df['decision_rater'] = np.where(
+    df['decision_rater'] == 'no','not_recommendable', np.where(df['decision_rater'] == 'yes','recommendable',
+        df['decision_rater']
+    )
+)
+df['decision_rater'] = np.where(df['harm_rater'] != '', 'not_recommendable', df['decision_rater'])
+
+# Calculates whether a job is a true positive, false negative, etc.
+df['error_type'] = np.where(
+    (df['decision_rater'] == 'not_recommendable') & (df['decision_audit'] == 'not_recommendable'),
+    'TP', np.where((df['decision_rater'] == 'not_recommendable') & (df['decision_audit'] == 'recommendable'),
+    'FP',np.where((df['decision_rater'] == 'recommendable') & (df['decision_audit'] == 'not_recommendable'),
+    'FN',np.where((df['decision_rater'] == 'recommendable') & (df['decision_audit'] == 'recommendable'),'TN','N/A')))
+)
+df[['audit_date','original_job_id','object_id','actor_id','injection_date']].head()
+
+
+# This section filters to include only data focused on specific harm type if harm_mode_on = 'Yes'
+
+harmy = (selected_harm if selected_harm != '' else date_harm_map[date_harm_map['injection_date'] == date_harm_map['injection_date'].max()]['harm_focused'].iloc[0])
+
+harm = date_harm_map[date_harm_map['harm_focused'] == harmy]['harm_short'].iloc[0]
+harm_long = date_harm_map[date_harm_map['harm_focused'] == harmy]['harm_long']
+
+df1 = (df[df['harm_focused'] == harmy] if harm_mode_on == 'Yes' else df)
+
+# Extract date of report for email
+date = df1.sort_values('injection_date', ascending = False)['injection_date'].dt.strftime('%m-%d').iloc[0]
+dates = df1.groupby('injection_date').count().reset_index()['injection_date'].sort_values(ascending = False).iloc[0:3]
+dates_f = dates.dt.strftime('%y/%m/%d')
+
+df1 = df1.merge(dates, on = 'injection_date', how = 'inner')
+harm
+
+# This code creates the aggregate tables to be included in final Excel report
+vendors = ['Accenture--Reels', 'Accenture--Search','TaskUs']
+
+dg = df1.pivot_table(index = ['actor_id','vendor','rater_type'], columns = ['audit_date_format', 'error_type'], values = 'handle_time', aggfunc = 'count').fillna(0).sort_index(axis = 1, ascending = False).reset_index().set_index('actor_id')
+    
+for k in dg.columns:
+    if (k[1] != ''):
+        if (k[0],'TP') not in dg.columns:
+            dg[(k[0],'TP')] = 0
+        else:
+            pass
+        if (k[0],'FP') not in dg.columns:
+            dg[(k[0],'FP')] = 0
+        else:
+            pass
+        if (k[0],'FN') not in dg.columns:
+            dg[(k[0],'FN')] = 0
+        else:
+            pass
+        if (k[0],'TN') not in dg.columns:
+            dg[(k[0],'TN')] = 0
+        else:
+            pass
+        dg[(k[0],'accuracy')] = (dg[(k[0],'TP')] + dg[(k[0],'TN')]) / (dg[(k[0],'TP')] + dg[(k[0],'TN')] + dg[(k[0],'FN')] + dg[(k[0],'FP')])
+        dg[(k[0],'precision')] = (dg[(k[0],'TP')]) / (dg[(k[0],'TP')] + dg[(k[0],'FP')])            
+        dg[(k[0],'recall')] = (dg[(k[0],'TP')]) / (dg[(k[0],'TP')] + dg[(k[0],'FN')])
+    else:
+        pass
+dg.insert(2, 'count', (dg[(dates_f.iloc[0],'TP')] + dg[(dates_f.iloc[0],'TN')] + dg[(dates_f.iloc[0],'FP')] + dg[(dates_f.iloc[0],'FN')]))
+dg['count'] = dg['count'].astype('int64')
+
+dr = df1.pivot_table(index = ['queue','vendor'], columns = ['audit_date_format','error_type'], values = 'handle_time', aggfunc = 'count').fillna(0).sort_index(axis = 1, ascending = False).reset_index().set_index('queue')
+#pd.Series([[k.dt.strftime('%m/%d/%y') for k in date_harm_map['audit_date'].astype('datetime64[ns]').unique() if k in x] for x in dr.columns])
+
+for k in dr.columns:
+    if(k[1] != ''):
+        if (k[0],'TP') not in dr.columns:
+            dr[(k[0],'TP')] = 0
+        else:
+            pass
+        if (k[0],'FP') not in dr.columns:
+            dr[(k[0],'FP')] = 0
+        else:
+            pass
+        if (k[0],'FN') not in dr.columns:
+            dr[(k[0],'FN')] = 0
+        else:
+            pass
+        if (k[0],'TN') not in dr.columns:
+            dr[(k[0],'TN')] = 0
+        else:
+            pass
+        dr[(k[0],'accuracy')] = (dr[(k[0],'TP')] + dr[(k[0],'TN')]) / (dr[(k[0],'TP')] + dr[(k[0],'TN')] + dr[(k[0],'FN')] + dr[(k[0],'FP')])
+        dr[(k[0],'precision')] = (dr[(k[0],'TP')]) / (dr[(k[0],'TP')] + dr[(k[0],'FP')])
+        dr[(k[0],'recall')] = (dr[(k[0],'TP')]) / (dr[(k[0],'TP')] + dr[(k[0],'FN')])
+    else:
+        pass
+
+dr1 = df1.pivot_table(index = ['audit_date_format','original_job_id','object_id','vendor'], columns = 'error_type', values = 'handle_time', aggfunc = 'count').fillna(0).reset_index().merge(changes).fillna('').set_index(['original_job_id'])
+#dr1 = dr1[dr1['audit_date_format'] == dr1['audit_date_format'].max()]
+
+if 'TP' not in dr1.columns:
+    dr1['TP'] = 0
+else:
+    pass
+if 'FP' not in dr1.columns:
+    dr1['FP'] = 0
+else:
+    pass
+if 'FN' not in dr1.columns:
+    dr1['FN'] = 0
+else:
+    pass
+if 'TN' not in dr1.columns:
+    dr1['TN'] = 0
+else:
+    pass
+dr1['count'] = dr1['TP'] + dr1['TN'] + dr1['FP'] + dr1['FN']
+dr1['accuracy'] = (dr1['TP'] + dr1['TN']) / (dr1['TP'] + dr1['TN'] + dr1['FP'] + dr1['FN'])
+dr1['hash_object_id'] = '#' + dr1['object_id'].astype('str')
+dr1.sort_values(by = 'accuracy',inplace = True)
+dr1.rename(columns = {'decision_new' : 'decision_answer','harm_new' : 'harm_answer'},inplace = True)
+
+
+# Provides a view into the metrics for all queues
+
+dr[[r for r in dr.columns if ((r[0] != '') and (r[1] in ('accuracy','precision','recall')))]][dr.index != 'Other'].fillna('')
+#dr[[r for r in dr.columns if ((r[0] != '') and (r[1] in ('accuracy','precision','recall')))]][dr.index != 'Other'x].to_csv('/Users/' + user + '/documents/queue_breakdown' + date + '.csv', encoding = 'utf-8')
+
+
+#Overall precision and recall for last date
+
+dff1 = df1[df1['injection_date'] == df1['injection_date'].max()].pivot_table(index = [], columns = 'error_type', values = 'handle_time', aggfunc = 'count')
+dff1['accuracy'] = (dff1['TP'] + dff1['TN']) / (dff1['TP'] + dff1['TN'] + dff1['FP'] + dff1['FN'])
+dff1['precision'] = dff1['TP'] / (dff1['TP'] + dff1['FP'])
+dff1['recall'] = dff1['TP'] / (dff1['TP'] + dff1['FN'])
+dff1.head()
+
+# Generate excel file countaining aggregates for all queues
+
+dgr = df1[df1['injection_date'] == df1['injection_date'].max()].groupby(['queue']).agg({'original_job_id' : 'nunique','actor_id' : 'nunique'})
+dgr.rename(columns = {'original_job_id' : 'jobs', 'actor_id' : 'actors'}, inplace = True)
+
+dgr.columns = [(k,'') for k in dgr.columns]
+
+ds = dr.join(dgr, how = 'left')
+ds = ds[ds.index != 'Other']
+ds[('harm','')] = harm
+
+for k in ['jobs','actors']:
+    ds[(k,'')] = np.where(ds[(k,'')].isna(),0,ds[(k,'')])
+
+ds = ds[[('harm',''),('jobs',''),('actors','')] + [k for k in ds.columns if k[1] in ['accuracy','precision','recall']]]
+
+# Preview overall summary of data and create formatted .xlsx
+# 'queue_brakdown_full' + date 
+ds.head()
+
+# Overall queueu breakdown loaded into excel file
+
+with pd.ExcelWriter('/Users/jameslavinge/documents/queue_breakdown_full' + date + ('_all_harms_' if harm_mode_on != 'Yes' else '') + '.xlsx', engine = 'xlsxwriter') as writer:
+    excel.ExcelFormatter.header_style = None
+    ds.to_excel(writer, sheet_name ='queues')
+    workbook = writer.book
+    worksheet2 = writer.sheets['queues']
+    format1 = workbook.add_format({'num_format':'0.00%'})
+    format2 = workbook.add_format({'bg_color': '#C6EFCE', 'font_color' : '#006100'})
+    format3 = workbook.add_format({'num_format':'0'})
+    format4 = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+    format5 = workbook.add_format({'bg_color': '#FFFD9B', 'font_color' :'#FFAA5F'})
+    worksheet2.conditional_format('E3:M17', {'type' : 'formula', 'criteria' : '=AND(E3 >= .85,NOT(ISBLANK(E3)))', 'format': format2})
+    worksheet2.conditional_format('E3:M17', {'type' : 'formula', 'criteria' : '=AND(E3 < .85,B3 >= .7,NOT(ISBLANK(E3)))', 'format': format5})
+    worksheet2.conditional_format('E3:M17', {'type' : 'formula', 'criteria' : '=AND(E3 < .7,NOT(ISBLANK(E3)))', 'format': format4})
+    worksheet2.set_column('E:M',None, format1)
+
+# Generates excel files for reporting, which will be placed in Documents folder
+# Names will be goldensetRawData + date + vendor
+
+dr.index = dr.index.str.replace('-ACN','')
+
+for k in vendors:
+    with pd.ExcelWriter('/Users/' + user + '/documents/goldenSetRawData' + date + k + ('_all_harms_' if harm_mode_on != 'Yes' else '') + '.xlsx', engine = 'xlsxwriter') as writer:
+        excel.ExcelFormatter.header_style = None
+        df[(~df['original_job_id'].isna()) & (df['vendor'] == k) & (df['audit_date_format'] == df['audit_date_format'].max())][['audit_date_format','queue_id','queue_name','actor_id','hash_object_id','job_id','original_job_id','handle_time','queue','decision_rater','harm_rater','decision_audit','harm_audit','error_type','queue']].to_excel(writer, sheet_name ='raw_data', index = False)
+        dg[dg[('vendor','')] == k][[j for j in dg.columns if (j[0] in ['rater_type','count']) | (j[1] in ['accuracy','precision','recall'])]].to_excel(writer, sheet_name ='actors',)# index = False)
+        dr[dr['vendor'] == k][[j for j in dr.columns if (j[1] in ['accuracy','precision','recall'])]].to_excel(writer, sheet_name ='queues',)# index = False)
+        dr1[(dr1['vendor'] == k) & (dr1['audit_date_format'] == dr1['audit_date_format'].max())][['hash_object_id','decision_answer','harm_answer','notes','count', 'accuracy']].to_excel(writer, sheet_name ='answer_sheet')#, index = False)
+        workbook = writer.book
+        worksheet1 = writer.sheets['actors']
+        worksheet2 = writer.sheets['queues']
+        worksheet3 = writer.sheets['raw_data']
+        worksheet4 = writer.sheets['answer_sheet']
+        format1 = workbook.add_format({'num_format':'0.00%'})
+        format2 = workbook.add_format({'bg_color': '#C6EFCE', 'font_color' : '#006100'})
+        format3 = workbook.add_format({'num_format':'0'})
+        format4 = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+        format5 = workbook.add_format({'bg_color': '#FFFD9B', 'font_color' :'#FFAA5F'})
+        
+        worksheet1.conditional_format('D3:L200', {'type' : 'formula', 'criteria' : '=AND(D3 >= .85,NOT(ISBLANK(D3)))', 'format': format2})
+        worksheet1.conditional_format('D3:L200', {'type' : 'formula', 'criteria' : '=AND(D3 < .85,D3 >= .7,NOT(ISBLANK(D3)))', 'format': format5})
+        worksheet1.conditional_format('D3:L200', {'type' : 'formula', 'criteria' : '=AND(D3 < .7,NOT(ISBLANK(D3)))', 'format': format4})
+        
+        worksheet1.set_column('D:L',None, format1)
+        worksheet1.set_column('A:A',None, format3)
+        worksheet2.conditional_format('B3:K12', {'type' : 'formula', 'criteria' : '=AND(B3 >= .85,NOT(ISBLANK(B3)))', 'format': format2})
+        worksheet2.conditional_format('B3:K12', {'type' : 'formula', 'criteria' : '=AND(B3 < .85,B3 >= .7,NOT(ISBLANK(B3)))', 'format': format5})
+        worksheet2.conditional_format('B3:K12', {'type' : 'formula', 'criteria' : '=AND(B3 < .7,NOT(ISBLANK(B3)))', 'format': format4})
+        worksheet2.set_column('B:K',None, format1)
+        worksheet3.set_column('D:D',None, format3)
+        worksheet4.set_column('G:G',None, format1)
+
+# Generates the emails, according to Pint's format
+
+# This cell generates the emails to send out to vendor
+# What remains to be filled out manually is the RCA section
+# and the screenshots of quality scores
+
+header = 'Accenture--Reels\nSubject: [Action required] Golden set metrics week of ' + date + '\nSend to: ' + email_acn_reels + '\nCC:Pint et al'
+header2 = 'TaskUs\nSubject: [Action required] Golden set metrics week of ' + date +'\nSend to: ' + email_taskus + '\nCC: Pint et al'
+header3 = 'Accenture--Search\nSubject: [Action required] Golden set metrics week of ' + date +'\nSend to: ' + email_search + '\nCC: Pint et al'
+
+text =[]
+for k in vendors:
+    text.append(
+            (header if k == 'Accenture--Reels' else (header2 if k == 'TaskUs' else header3)) + '\n'\
+            'Good afternoon, everyone,\n'\
+            'We are providing some insights regarded the Golden Frame set of IDs that we injected '\
+            'into the queues last week. Please reply and acknowledge that you have received this email '\
+            'and requests from our team. The harm type in focus was ' + harm + '. '\
+            'The raters\' insights are shown below (previous performance on ' + harm + ' in brackets):\n\n'
+            
+            'Raters:\n'\
+            'Number of jobs in Golden Set: ' +\
+            str(len(df[(df['vendor'] == k) & (df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Prod')]['original_job_id'].unique())) +\
+            ('' if len(dates_f) == 1 else ' [' + str(len(df[(df['vendor'] == k) & (df['audit_date_format'] == dates_f.iloc[1]) & (df['rater_type'] == 'Prod')]['original_job_id'].unique())) + ']') + '\n'\
+            'Raters in test: ' + str(len(df[(df['vendor'] == k) & (df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Prod')]['actor_id'].unique())) +\
+            ('' if len(dates_f) == 1 else ' [' + str(len(df[(df['vendor'] == k) & (df['audit_date_format'] == dates_f.iloc[1]) & (df['rater_type'] == 'Prod')]['actor_id'].unique())) + ']') + '\n'\
+            'Raters with >85% accuracy: ' + str(dg[(dg[('vendor','')] == k) & (dg['rater_type'] == 'Prod') & (dg[(dates_f.iloc[0],'accuracy')] >= .85)].shape[0]) +\
+            ('' if len(dates_f) == 1 else ' [' + str(dg[(dg[('vendor','')] == k) & (dg['rater_type'] == 'Prod') & (dg[(dates_f.iloc[1],'accuracy')] >= .85)].shape[0]) + ']') + '\n'\
+            'Raters with <70% accuracy: ' + str(dg[(dg[('vendor','')] == k) & (dg['rater_type'] == 'Prod') & (dg[(dates_f.iloc[0],'accuracy')] < .7)].shape[0]) +\
+            ('' if len(dates_f) == 1 else ' [' + str(dg[(dg[('vendor','')] == k) & (dg['rater_type'] == 'Prod') & (dg[(dates_f.iloc[1],'accuracy')] < .7)].shape[0]) + ']') + '\n'\
+            'QAs:\n'\
+            'Number of jobs in Golden Set: ' +\
+            str(len(df[(df['vendor'] == k) & (df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Quality')]['original_job_id'].unique())) +\
+            ('' if len(dates_f) == 1 else ' [' + str(len(df[(df['vendor'] == k) & (df['audit_date_format'] == dates_f.iloc[1]) & (df['rater_type'] == 'Quality')]['original_job_id'].unique())) + ']') + '\n'\
+            'Raters in test: ' + str(len(df[(df['vendor'] == k) & (df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Quality')]['actor_id'].unique())) +\
+            ('' if len(dates_f) == 1 else ' [' + str(len(df[(df['vendor'] == k) & (df['audit_date_format'] == dates_f.iloc[1]) & (df['rater_type'] == 'Quality')]['actor_id'].unique())) + ']') + '\n'\
+            'Raters with >85% accuracy: ' + str(dg[(dg[('vendor','')] == k) & (dg['rater_type'] == 'Quality') & (dg[(dates_f.iloc[0],'accuracy')] >= .85)].shape[0]) +\
+            ('' if len(dates_f) == 1 else ' [' + str(dg[(dg[('vendor','')] == k) & (dg['rater_type'] == 'Quality') & (dg[(dates_f.iloc[1],'accuracy')] >= .85)].shape[0]) + ']') + '\n'\
+            'Raters with <70% accuracy: ' + str(dg[(dg[('vendor','')] == k) & (dg['rater_type'] == 'Quality') & (dg[(dates_f.iloc[0],'accuracy')] < .7)].shape[0]) +\
+            ('' if len(dates_f) == 1 else ' [' + str(dg[(dg[('vendor','')] == k) & (dg['rater_type'] == 'Quality') & (dg[(dates_f.iloc[1],'accuracy')] < .7)].shape[0]) + ']') + '\n'\
+            'Here are the quality metrics by queue, compared against previous ' + harm + ' goldensets:\n\n'\
+            'RCA: \n\n\n'\
+            'As Pint shared, '\
+            'the goal is to get the accuracy, precision and score up to 85% or more. '\
+            'We also want to see the majority of raters and quality auditors reach the target as soon as we can.\n\n'\
+            'Please cascade the common error and conduct a policy retraining on ' + harm + ' '\
+            'for those raters, and we are happy to provide support if needed. We will go '\
+            'through the job IDs with the most misses as well during our calibration call to provide '\
+            'clarification and we plan to test the raters on the same violations again in the next few weeks.\n'\
+            'Please see the details of rater\'s performance and raw data in the attachment. '\
+            'Please feel free to reach out to us if you have any questions!\n\nBest,\nJames\n\n'
+        )
+text.append(
+    'PDO labeling golden test result - week of ' + date + '\n'\
+    'Violating Type in focus: ' + harm_long + ' (' + harm + ')\n'\
+    'Program: Watch and Reels Enforcement & Search Integrity\n'\
+    'Result overview:\nBelow are the rater statistics for the goldenset, together with the rater statistics of the previous goldenset in this harm type in brackets.\n'\
+    'Raters:\n'\
+    'Number of jobs in Golden Set: ' +\
+    str(len(df[(df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Prod')]['original_job_id'].unique())) +\
+    ('' if len(dates_f) == 1 else ' [' + str(len(df[(df['audit_date_format'] == dates_f.iloc[1]) & (df['rater_type'] == 'Prod')]['original_job_id'].unique())) + ']') + '\n'\
+    'Non-rec jobs: ' + str(len(df[(df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Prod') & (df['decision_audit'] == 'not_recommendable')]['original_job_id'].unique())) +'\n'\
+    'Rec jobs: ' + str(len(df[(df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Prod') & (df['decision_audit'] == 'recommendable')]['original_job_id'].unique())) + '\n'\
+    'Raters in test: ' + str(len(df[(df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Prod')]['actor_id'].unique())) +\
+    ('' if len(dates_f) == 1 else ' [' + str(len(df[(df['audit_date_format'] == dates_f.iloc[1]) & (df['rater_type'] == 'Prod')]['actor_id'].unique())) + ']') + '\n'\
+    'Raters with >85% accuracy: ' + str(dg[(dg['rater_type'] == 'Prod') & (dg[(dates_f.iloc[0],'accuracy')] >= .85)].shape[0]) +\
+    ('' if len(dates_f) == 1 else ' [' + str(dg[(dg['rater_type'] == 'Prod') & (dg[(dates_f.iloc[1],'accuracy')] >= .85)].shape[0]) + ']') + '\n'\
+    'Raters with <70% accuracy: ' + str(dg[(dg['rater_type'] == 'Prod') & (dg[(dates_f.iloc[0],'accuracy')] < .7)].shape[0]) +\
+    ('' if len(dates_f) == 1 else ' [' + str(dg[(dg['rater_type'] == 'Prod') & (dg[(dates_f.iloc[1],'accuracy')] < .7)].shape[0]) + ']') + '\n'\
+    'QAs:\n'\
+    'Number of jobs in Golden Set: ' +\
+    str(len(df[(df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Quality')]['original_job_id'].unique())) +\
+    ('' if len(dates_f) == 1 else ' [' + str(len(df[(df['audit_date_format'] == dates_f.iloc[1]) & (df['rater_type'] == 'Quality')]['job_id'].unique())) + ']') + '\n'\
+    'Non-rec jobs: ' + str(len(df[(df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Quality') & (df['decision_audit'] == 'not_recommendable')]['original_job_id'].unique())) +'\n'\
+    'Rec jobs: ' + str(len(df[(df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Quality') & (df['decision_audit'] == 'recommendable')]['original_job_id'].unique())) + '\n'\
+    'Raters in test: ' + str(len(df[(df['audit_date_format'] == dates_f.iloc[0]) & (df['rater_type'] == 'Quality')]['actor_id'].unique())) +\
+    ('' if len(dates_f) == 1 else ' [' + str(len(df[(df['audit_date_format'] == dates_f.iloc[1]) & (df['rater_type'] == 'Quality')]['actor_id'].unique())) + ']') + '\n'\
+    'Raters with >85% accuracy: ' + str(dg[(dg['rater_type'] == 'Quality') & (dg[(dates_f.iloc[0],'accuracy')] >= .85)].shape[0]) +\
+    ('' if len(dates_f) == 1 else ' [' + str(dg[(dg['rater_type'] == 'Quality') & (dg[(dates_f.iloc[1],'accuracy')] >= .85)].shape[0]) + ']') + '\n'\
+    'Raters with <70% accuracy: ' + str(dg[(dg['rater_type'] == 'Quality') & (dg[(dates_f.iloc[0],'accuracy')] < .7)].shape[0]) +\
+    ('' if len(dates_f) == 1 else ' [' + str(dg[(dg['rater_type'] == 'Quality') & (dg[(dates_f.iloc[1],'accuracy')] < .7)].shape[0]) + ']') + '\n\n'\
+    'Queue breakdown:\nHere is the breakdown of queue metrics, compared against metrics for previous ' + harm + ' golden sets:\n\n'\
+    'RCA:\n\n' + distribution_list
+)
+
+# Print the emails to the console
+
+for k in text[0:3]:
+    print(k)
+    print('\n\n')
+for k in text[3]:
+    print(k)
+
+#RCA breakdown for jobs
+dfa = df[(df['injection_date'] == df['injection_date'].max())].fillna('').groupby(['error_type','original_job_id','notes']).agg({'actor_id' : 'count'}).reset_index()
+dfa['total'] = dfa.groupby('error_type').actor_id.transform('sum')
+dfa['error'] = dfa['actor_id'] / dfa['total']
+dfa.sort_values('error', ascending = False).set_index(['error_type','original_job_id']).to_csv('/Users/' + user + '/documents/rca' + date + '.csv', encoding = 'utf-8')
