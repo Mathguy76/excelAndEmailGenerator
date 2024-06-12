@@ -306,6 +306,16 @@ ds = ds[[('harm',''),('jobs',''),('actors','')] + [k for k in ds.columns if k[1]
 # 'queue_brakdown_full' + date 
 ds.head()
 
+
+# This sheet creates a heat map of harms chosen by raters
+# for each job in the most recent golden set selected
+
+df['harm_split'] = df['harm_rater'].str.split(',')
+df_ex_new = df[df['injection_date'] == df['injection_date'].max()].explode('harm_split')
+dg_ex_new = df_ex_new.pivot_table(index = 'original_job_id', columns = 'harm_split', values = 'handle_time', aggfunc = 'count').fillna(0).reset_index()
+dg_ex_new.to_csv('/Users/' + user + '/documents/heat_map' + date + '.csv', encoding = 'utf-8')
+
+
 # Overall queueu breakdown loaded into excel file
 
 with pd.ExcelWriter('/Users/jameslavinge/documents/queue_breakdown_full' + date + ('_all_harms_' if harm_mode_on != 'Yes' else '') + '.xlsx', engine = 'xlsxwriter') as writer:
@@ -452,8 +462,78 @@ for k in text[0:3]:
 for k in text[3]:
     print(k)
 
-#RCA breakdown for jobs
+
+# Create sheet to determine RCA breakdown for jobs
+# Edit by adding "rca" column and "notes2" column
+
 dfa = df[(df['injection_date'] == df['injection_date'].max())].fillna('').groupby(['error_type','original_job_id','notes']).agg({'actor_id' : 'count'}).reset_index()
-dfa['total'] = dfa.groupby('error_type').actor_id.transform('sum')
-dfa['error'] = dfa['actor_id'] / dfa['total']
+dfa.rename(columns = {'actor_id' : 'job_count','notes' : 'old_notes'}, inplace = True)
+dfa['total'] = dfa.groupby('error_type').job_count.transform('sum')
+dfa['error'] = dfa['job_count'] / dfa['total']
+dfa['rca'] = ''
+dfa['notes'] = ''
 dfa.sort_values('error', ascending = False).set_index(['error_type','original_job_id']).to_csv('/Users/' + user + '/documents/rca' + date + '.csv', encoding = 'utf-8')
+
+
+# !!! Do not run this cell until RCA breakdown is edited !!!
+# After editing the RCA breakdown sheet to include RCA and additional notes
+# and saving, this cell Generates the RCA summary
+# Use column titles "rca" and "notes"
+# Buckets for RCA:
+# Rater error
+# Tricky job
+# Protocol issue
+# Content not loading
+# Tooling issue
+# Other? But try to stick to the above
+# !!! Do not reformat percentage!!!
+
+dx = pd.read_csv('/Users/' + user + '/documents/rca' + date + '.csv', encoding = 'utf-8')
+dx['string'] = dx['original_job_id'] + ': ' + np.where(dx['old_notes'].isna(), dx['notes'], np.where(dx['notes'].isna(), dx['old_notes'], dx['old_notes'] + '; ' + dx['notes']))
+dx = dx[~dx['rca'].isna()]
+
+# Check the bucket names
+for k in dx['rca'].unique():
+    print(k)
+
+dx['bucket_count'] = dx.groupby(['error_type','rca']).job_count.transform('sum')
+dx['bucket_error'] = round(dx['bucket_count'] / dx['total'] * 100,2)
+
+dx['summary'] = dx['rca'] + ' [' + dx['bucket_error'].astype('str') + '%]: '
+
+# This code outputs the buckets
+dy = dx.groupby(['error_type','rca','summary','string']).agg({'job_count' : 'sum', 'total' : 'max'}).sort_values('job_count', ascending = False)
+# dy['error'] = round(dy['job_count'] / dy['total'] * 100, 2)
+# dy['summary'] = dy['rca'] + ' [' + dy['error'].astype('str') + '%]: '
+dy.head()
+
+
+# Create rca report preview
+
+dz = dy.reset_index()
+total_errors = dz[dz['error_type'] == 'FN']['total'].iloc[0] + dz[dz['error_type'] == 'FP']['total'].iloc[0]
+dz['error_contribution'] = dz['total'] / total_errors
+
+dict = {'FN' : 'false negatives', 'FP' : 'false positives'}
+
+rca_text = []
+
+for k in dz['error_type'].unique():
+    rca_text.append('Drivers of ' +\
+                dict[k] + '(' +\
+                round(dz[dz['error_type'] == k]['error_contribution'].iloc[0] * 100,2).astype('str') + \
+                '%): \n'
+               )
+    for j in dz[(dz['error_type'] == k)]['rca'].unique():
+        rca_text.append(dz[(dz['error_type'] == k) & (dz['rca'] == j)]['summary'].iloc[0] + '\n')
+        for m in dz[(dz['error_type'] == k) & (dz['rca'] == j)]['string']:
+            rca_text.append(m + '\n')
+
+
+# Print RCA as text
+# Flesh out with more detail / remove all but highlight jobs
+# for report
+
+for k in rca_text:
+    print(k)
+
