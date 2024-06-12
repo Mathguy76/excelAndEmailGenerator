@@ -1,3 +1,9 @@
+# To run this code, you must install package xlsxwriter
+# Run pip intall XlsxWriter
+# or pip3 install XlsxWriter
+# Also install pandas and numpy
+# but these should already be included in python
+
 import pandas as pd
 import numpy as np
 from pandas.io.formats import excel
@@ -8,20 +14,27 @@ import os
 # Must create files
 
 # ^^^ Edit this string with your username! ^^^
-user = 'jameslavinge'
+user = '<meta username>'
 
 # Enter a date in yyyy-mm-dd format (placed within quotes), if interested in historical golden set data, otherwise
 # leave blank if interested in most recent data. If a date is included
 
 end_date = ''
 
-# Select 'Yes' if you compare by harm type, or 'No' if comparing all golden sets
+# Select 'Yes' if you compare by harm type, or 'No' (or any other string) if comparing all golden sets (case sensitive)
 harm_mode_on = 'Yes'
 
 # Specify harm type string (in DB form, e.g. 'borderline_nudity'). Leave blank for auto-select
 selected_harm = ''
 
-# Enter email distribution in the format name@email.com; name2@email.com; 
+# !!! Note, if both harm_mode_on and selected_harm variables are specified, the
+# code will compile goldensets focused on that harm type up to the chosen date
+
+# Enter email distribution in the format name@email.com; name2@email.com;
+# You can include line breaks by using \ sumbol at the end of lines and enclosing each line in quotes, e.g.
+# email_acn_reels = 'hello@meta.com; hello2@meta.com; '\
+#         'hello3@meta.com; hello4@meta.com;'
+
 email_acn_reels = 'wagentrecglobal@accenture.com; jitesh.karkera@accenture.com; ananta.v.kshirsagar@accenture.com; silva@accenture.com; sergio.a.silva@accenture.com; edwin.christie@fb.accenture.com'
 email_taskus = 'ravi.bhardwaj@taskus.com; biswajit.barik@taskus.com; abdurahman.vr@taskus.com; joy.shiffin@taskus.com; neha.bhargav@taskus.com; nidhi.pareek@taskus.com>; ahmad.kamal@taskus.com; raj.jaiswal@taskus.com; mohit.taneja@taskus.com; ramji.ramadurai@taskus.com; rohit.rawat@taskus.com; eric.nimbunchat@taskus.com; shivam.tiwari02@taskus.com; devashish.rawal@taskus.com; jaya.vishwakarma@taskus.com; rishabh.mishra02@taskus.com; kiran.agrawal@taskus.com; clive.joseph@taskus.com; gino.tizon@taskus.com; sagar.tu@taskus.com'
 email_search = '"Ed Baez" <edbaez@meta.com>; kuldipp@meta.com <kuldipp@meta.com>; "Atiqur Rahman" <mdatiq@meta.com>; "Candice Han" <candicehan@meta.com>; "Pint Panichkul" <pintpilantha@meta.com>; "Jacqueline Liu" <jacliu@meta.com>; zmarai@fb.com <zmarai@fb.com>; "Ana Maria Cardoso" <acardoso@meta.com>; "josie.joy.h.barlosoATaccenture.com" <josie.joy.h.barloso@accenture.com>; jirah.nielle.p.ongco@accenture.com <jirah.nielle.p.ongco@accenture.com>; k.sequeira.alvarez@accenture.com <k.sequeira.alvarez@accenture.com>; andre.benavides@accenture.com <andre.benavides@accenture.com>; marc.l.m.marasigan@accenture.com <marc.l.m.marasigan@accenture.com>; johnsen.t.mendez@accenture.com <johnsen.t.mendez@accenture.com>; "vincent.john.e.agbayATaccenture.com" <vincent.john.e.agbay@accenture.com>; twilliams22@meta.com <twilliams22@meta.com>; "Falis Yusuf" <falisyusuf@meta.com>; "James Lavigne" <jameslavinge@meta.com>; "Ed Baez" <edbaez@meta.com>; kuldipp@meta.com <kuldipp@meta.com>; "Atiqur Rahman" <mdatiq@meta.com>; "Candice Han" <candicehan@meta.com>; "Pint Panichkul" <pintpilantha@meta.com>; "Jacqueline Liu" <jacliu@meta.com>; zmarai@fb.com <zmarai@fb.com>; "Ana Maria Cardoso" <acardoso@meta.com>; "josie.joy.h.barlosoATaccenture.com" <josie.joy.h.barloso@accenture.com>; jirah.nielle.p.ongco@accenture.com <jirah.nielle.p.ongco@accenture.com>; k.sequeira.alvarez@accenture.com <k.sequeira.alvarez@accenture.com>; andre.benavides@accenture.com <andre.benavides@accenture.com>; marc.l.m.marasigan@accenture.com <marc.l.m.marasigan@accenture.com>; johnsen.t.mendez@accenture.com <johnsen.t.mendez@accenture.com>; "vincent.john.e.agbayATaccenture.com" <vincent.john.e.agbay@accenture.com>'
@@ -129,6 +142,8 @@ df = pd.concat(dfarray).fillna('').astype({'actor_id' : 'int64', 'object_id' : '
 df['rating_date'] = pd.to_datetime(df['audit_date'],dayfirst = False,format = '%m/%d/%y')
 df['audit_date'] = pd.to_datetime(df['audit_date'],dayfirst = False,format = '%m/%d/%y')
 df['object_id'] = df['hash_object_id'].str.replace('#','').astype('int64')
+
+# Duplicate records will occur if the golden set files overlap but are explicitly removed
 df.drop_duplicates(inplace = True)
 
 
@@ -143,6 +158,20 @@ df2 = df2.groupby(['audit_date','object_id']).agg({'injection_date' : 'max','ori
 df2.head()
 
 # Finish building the data frame
+# This data frame pulls the golden set ground truth for each rater decision, which includes
+# the original_job_id used in the golden set preparation sheet (each original_job_id corresponds
+# to multiple job_ids in the raw data.
+# The injection date is inferred from the object_id and the audit_date (set to be the latest
+# injection date before the audit_date
+
+# Merge on audit_date and object_id, which pulls in injection date from d2
+# Also merge on actor_list to pull info about individual rater
+# Joining on the date as well as the object_id avoids the problem of
+# late ground truth decisions being excluded or difficult to find
+# Duplicate records should not occur
+
+# The team the rater is assigned to is based on "actors.csv" file
+
 df = df.merge(df2, on = ['audit_date', 'object_id'], how = 'left').merge(actor_list, on = 'actor_id', how = 'left')
 
 df['injection_date'] = df['injection_date'].astype('datetime64[ns]')
@@ -153,7 +182,9 @@ df['rater_type'] = np.where(df['queue'].str.contains('Quality'),'Quality','Prod'
 # Rename columns
 df.rename(columns = {'decision_new' : 'decision_audit','harm_new' : 'harm_audit','decision_string' : 'decision_rater','harm' : 'harm_rater'},inplace = True)
 
-#Update old Search decisions to the current decision tree format
+# Update old Search decisions to the current decision tree format
+# Note: this code does not modify old search harm types
+
 df['decision_rater'] = np.where(
     df['decision_rater'] == 'no','not_recommendable', np.where(df['decision_rater'] == 'yes','recommendable',
         df['decision_rater']
@@ -171,7 +202,8 @@ df['error_type'] = np.where(
 df[['audit_date','original_job_id','object_id','actor_id','injection_date']].head()
 
 
-# This section filters to include only data focused on specific harm type if harm_mode_on = 'Yes'
+# This section filters to include only data focused on specific harm type if harm_mode_on = 'Yes' (case sensitive)
+# Otherwise, all data will be included
 
 harmy = (selected_harm if selected_harm != '' else date_harm_map[date_harm_map['injection_date'] == date_harm_map['injection_date'].max()]['harm_focused'].iloc[0])
 
@@ -189,7 +221,7 @@ df1 = df1.merge(dates, on = 'injection_date', how = 'inner')
 harm
 
 # This code creates the aggregate tables to be included in final Excel report
-vendors = ['Accenture--Reels', 'Accenture--Search','TaskUs']
+vendors = ['Accenture--Reels', 'Accenture--Search','TaskUs'] # You can change these names, but keep them consistent with the "vendor" column in "actors.csv"
 
 dg = df1.pivot_table(index = ['actor_id','vendor','rater_type'], columns = ['audit_date_format', 'error_type'], values = 'handle_time', aggfunc = 'count').fillna(0).sort_index(axis = 1, ascending = False).reset_index().set_index('actor_id')
     
@@ -219,6 +251,7 @@ for k in dg.columns:
 dg.insert(2, 'count', (dg[(dates_f.iloc[0],'TP')] + dg[(dates_f.iloc[0],'TN')] + dg[(dates_f.iloc[0],'FP')] + dg[(dates_f.iloc[0],'FN')]))
 dg['count'] = dg['count'].astype('int64')
 
+# This builds a pivot table that outputs number of each error_type for each date, given the queue (and vendor)
 dr = df1.pivot_table(index = ['queue','vendor'], columns = ['audit_date_format','error_type'], values = 'handle_time', aggfunc = 'count').fillna(0).sort_index(axis = 1, ascending = False).reset_index().set_index('queue')
 #pd.Series([[k.dt.strftime('%m/%d/%y') for k in date_harm_map['audit_date'].astype('datetime64[ns]').unique() if k in x] for x in dr.columns])
 
